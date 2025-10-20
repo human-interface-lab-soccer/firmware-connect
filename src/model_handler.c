@@ -8,9 +8,22 @@
 #include <bluetooth/mesh/models.h>
 #include <dk_buttons_and_leds.h>
 #include "model_handler.h"
+#include <zephyr/drivers/gpio.h>
 
-// 赤LED点灯のため実装
-// #include <zephyr/drivers/gpio.h>
+// 外付けLEDのピンを定義
+#define RED_LED_NODE DT_NODELABEL(gpio0)
+#define RED_LED_PIN 1  // P0.01 に対応
+
+#define GREEN_LED_NODE DT_NODELABEL(gpio0)
+#define GREEN_LED_PIN 2  
+
+#define BLUE_LED_NODE DT_NODELABEL(gpio0)
+#define BLUE_LED_PIN 3  
+
+static const struct device *red_led_dev;
+static const struct device *green_led_dev;
+static const struct device *blue_led_dev;
+
 
 static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 		    const struct bt_mesh_onoff_set *set,
@@ -46,13 +59,7 @@ static struct led_ctx led_ctx[] = {
 #endif
 };
 
-// 外付けLEDのピンを定義
-// #define RED_LED_NODE   DT_NODELABEL(gpio0)
-// #define RED_LED_PIN    1  // P0.01 に対応
-
-// static const struct device *red_led_dev;
-
-
+// 時間遷移がある場合に使用（今後消すかも）
 static void led_transition_start(struct led_ctx *led)
 {
 	int led_idx = led - &led_ctx[0];
@@ -91,14 +98,26 @@ static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 		led->remaining = 0;
 		dk_set_led(led_idx, set->on_off);
 
-		// 赤LED
-		// if (red_led_dev) {
-        //     gpio_pin_set(red_led_dev, RED_LED_PIN, set->on_off);
-        // }
+		// 赤LEDとled0が対応
+		if (led_idx == 0 && red_led_dev) {
+    		gpio_pin_set(red_led_dev, RED_LED_PIN, set->on_off);
+    		printk("Red LED (P0.01) -> %d\n", set->on_off);
+		}
+		// 緑LEDとled1が対応
+		if (led_idx == 1 && green_led_dev) {
+    		gpio_pin_set(green_led_dev, GREEN_LED_PIN, set->on_off);
+    		printk("Green LED (P0.01) -> %d\n", set->on_off);
+		}
+		// 青LEDとled2が対応
+		if (led_idx == 2 && blue_led_dev) {
+    		gpio_pin_set(blue_led_dev, BLUE_LED_PIN, set->on_off);
+    		printk("Blue LED (P0.01) -> %d\n", set->on_off);
+		}
 
 		goto respond;
 	}
 
+	// 時間遷移がある場合に使用（今後消すかも）
 	led->remaining = set->transition->time;
 
 	if (set->transition->delay) {
@@ -234,13 +253,25 @@ const struct bt_mesh_comp *model_handler_init(void)
 		k_work_init_delayable(&led_ctx[i].work, led_work);
 	}
 
-	// 赤LED
-	// red_led_dev = DEVICE_DT_GET(RED_LED_NODE);
-    // if (!device_is_ready(red_led_dev)) {
-    //     printk("Error: GPIO0 device not ready\n");
-    // } else {
-    //     gpio_pin_configure(red_led_dev, RED_LED_PIN, GPIO_OUTPUT_INACTIVE);
-    // }
+	// LED初期化
+	red_led_dev = DEVICE_DT_GET(RED_LED_NODE);
+	if (!device_is_ready(red_led_dev)) {
+    	printk("Error: GPIO device not ready.\n");
+	}
+	gpio_pin_configure(red_led_dev, RED_LED_PIN, GPIO_OUTPUT_INACTIVE);
+
+	green_led_dev = DEVICE_DT_GET(GREEN_LED_NODE);
+	if (!device_is_ready(green_led_dev)) {
+    	printk("Error: GPIO device not ready.\n");
+		printf("Error: GPIO device not ready\n");
+	}
+	gpio_pin_configure(green_led_dev, GREEN_LED_PIN, GPIO_OUTPUT_INACTIVE);
+
+	blue_led_dev = DEVICE_DT_GET(BLUE_LED_NODE);
+	if (!device_is_ready(blue_led_dev)) {
+    	printk("Error: GPIO device not ready.\n");
+	}
+	gpio_pin_configure(blue_led_dev, BLUE_LED_PIN, GPIO_OUTPUT_INACTIVE);
 
 	return &comp;
 }
