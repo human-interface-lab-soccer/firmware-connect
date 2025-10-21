@@ -263,7 +263,6 @@ const struct bt_mesh_comp *model_handler_init(void)
 	green_led_dev = DEVICE_DT_GET(GREEN_LED_NODE);
 	if (!device_is_ready(green_led_dev)) {
     	printk("Error: GPIO device not ready.\n");
-		printf("Error: GPIO device not ready\n");
 	}
 	gpio_pin_configure(green_led_dev, GREEN_LED_PIN, GPIO_OUTPUT_INACTIVE);
 
