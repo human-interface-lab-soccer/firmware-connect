@@ -111,7 +111,7 @@ static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 		// 青LEDとled2が対応
 		if (led_idx == 2 && blue_led_dev) {
     		gpio_pin_set(blue_led_dev, BLUE_LED_PIN, set->on_off);
-    		printk("Blue LED (P0.01) -> %d\n", set->on_off);
+    		printk("Blue LED (P0.03) -> %d\n", set->on_off);
 		}
 
 		goto respond;
