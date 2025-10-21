@@ -39,8 +39,6 @@ static const struct bt_mesh_onoff_srv_handlers onoff_handlers = {
 
 struct led_ctx {
 	struct bt_mesh_onoff_srv srv;
-	struct k_work_delayable work;
-	uint32_t remaining;
 	bool value;
 };
 
@@ -59,27 +57,11 @@ static struct led_ctx led_ctx[] = {
 #endif
 };
 
-// 時間遷移がある場合に使用（今後消すかも）
-static void led_transition_start(struct led_ctx *led)
-{
-	int led_idx = led - &led_ctx[0];
-
-	/* As long as the transition is in progress, the onoff
-	 * state is "on":
-	 */
-	dk_set_led(led_idx, true);
-	k_work_reschedule(&led->work, K_MSEC(led->remaining));
-	led->remaining = 0;
-}
-
 static void led_status(struct led_ctx *led, struct bt_mesh_onoff_status *status)
 {
-	/* Do not include delay in the remaining time. */
-	status->remaining_time = led->remaining ? led->remaining :
-		k_ticks_to_ms_ceil32(k_work_delayable_remaining_get(&led->work));
+	status->remaining_time = 0;
 	status->target_on_off = led->value;
-	/* As long as the transition is in progress, the onoff state is "on": */
-	status->present_on_off = led->value || status->remaining_time;
+	status->present_on_off = led->value;
 }
 
 static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
@@ -94,36 +76,22 @@ static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 	}
 
 	led->value = set->on_off;
-	if (!bt_mesh_model_transition_time(set->transition)) {
-		led->remaining = 0;
-		dk_set_led(led_idx, set->on_off);
+	dk_set_led(led_idx, set->on_off);
 
-		// 赤LEDとled0が対応
-		if (led_idx == 0 && red_led_dev) {
-    		gpio_pin_set(red_led_dev, RED_LED_PIN, set->on_off);
-    		printk("Red LED (P0.01) -> %d\n", set->on_off);
-		}
-		// 緑LEDとled1が対応
-		if (led_idx == 1 && green_led_dev) {
-    		gpio_pin_set(green_led_dev, GREEN_LED_PIN, set->on_off);
-    		printk("Green LED (P0.02) -> %d\n", set->on_off);
-		}
-		// 青LEDとled2が対応
-		if (led_idx == 2 && blue_led_dev) {
-    		gpio_pin_set(blue_led_dev, BLUE_LED_PIN, set->on_off);
-    		printk("Blue LED (P0.03) -> %d\n", set->on_off);
-		}
-
-		goto respond;
+	// 赤LEDとled0が対応
+	if (led_idx == 0 && red_led_dev) {
+    	gpio_pin_set(red_led_dev, RED_LED_PIN, set->on_off);
+    	printk("Red LED (P0.01) -> %d\n", set->on_off);
 	}
-
-	// 時間遷移がある場合に使用（今後消すかも）
-	led->remaining = set->transition->time;
-
-	if (set->transition->delay) {
-		k_work_reschedule(&led->work, K_MSEC(set->transition->delay));
-	} else {
-		led_transition_start(led);
+	// 緑LEDとled1が対応
+	if (led_idx == 1 && green_led_dev) {
+    	gpio_pin_set(green_led_dev, GREEN_LED_PIN, set->on_off);
+    	printk("Green LED (P0.02) -> %d\n", set->on_off);
+	}
+	// 青LEDとled2が対応
+	if (led_idx == 2 && blue_led_dev) {
+    	gpio_pin_set(blue_led_dev, BLUE_LED_PIN, set->on_off);
+    	printk("Blue LED (P0.03) -> %d\n", set->on_off);
 	}
 
 respond:
@@ -136,26 +104,7 @@ static void led_get(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 		    struct bt_mesh_onoff_status *rsp)
 {
 	struct led_ctx *led = CONTAINER_OF(srv, struct led_ctx, srv);
-
 	led_status(led, rsp);
-}
-
-static void led_work(struct k_work *work)
-{
-	struct led_ctx *led = CONTAINER_OF(work, struct led_ctx, work.work);
-	int led_idx = led - &led_ctx[0];
-
-	if (led->remaining) {
-		led_transition_start(led);
-	} else {
-		dk_set_led(led_idx, led->value);
-
-		/* Publish the new value at the end of the transition */
-		struct bt_mesh_onoff_status status;
-
-		led_status(led, &status);
-		bt_mesh_onoff_srv_pub(&led->srv, NULL, &status);
-	}
 }
 
 /* Set up a repeating delayed work to blink the DK's LEDs when attention is
@@ -248,10 +197,6 @@ static const struct bt_mesh_comp comp = {
 const struct bt_mesh_comp *model_handler_init(void)
 {
 	k_work_init_delayable(&attention_blink_work, attention_blink);
-
-	for (int i = 0; i < ARRAY_SIZE(led_ctx); ++i) {
-		k_work_init_delayable(&led_ctx[i].work, led_work);
-	}
 
 	// LED初期化
 	red_led_dev = DEVICE_DT_GET(RED_LED_NODE);
