@@ -9,6 +9,8 @@
 #include <dk_buttons_and_leds.h>
 #include "model_handler.h"
 #include <zephyr/drivers/gpio.h>
+#include "switch_color_model.h"  
+#include "model_handler.h"
 
 // 外付けLEDのピンを定義
 #define RED_LED_NODE DT_NODELABEL(gpio0)
@@ -37,12 +39,6 @@ struct led_ctx {
 	bool value;
 };
 
-// 外付けLEDの構造体
-struct led_info {
-	const struct device *dev;
-	uint8_t pin;
-	const char *name;
-};
 
 static struct led_ctx led_ctx[] = {
 #if DT_NODE_EXISTS(DT_ALIAS(led0))
@@ -59,7 +55,7 @@ static struct led_ctx led_ctx[] = {
 #endif
 };
 
-static struct led_info leds[] = {
+struct led_info leds[] = {
 	{ .dev = DEVICE_DT_GET(RED_LED_NODE),   .pin = RED_LED_PIN,   .name = "Red"   },
 	{ .dev = DEVICE_DT_GET(GREEN_LED_NODE), .pin = GREEN_LED_PIN, .name = "Green" },
 	{ .dev = DEVICE_DT_GET(BLUE_LED_NODE),  .pin = BLUE_LED_PIN,  .name = "Blue"  },
@@ -165,54 +161,85 @@ BT_MESH_HEALTH_PUB_DEFINE(health_pub, 0);
 
 static struct bt_mesh_elem elements[] = {
 #if DT_NODE_EXISTS(DT_ALIAS(led0))
-	BT_MESH_ELEM(
-		1, BT_MESH_MODEL_LIST(
-			BT_MESH_MODEL_CFG_SRV,
-			BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
-			BT_MESH_MODEL_ONOFF_SRV(&led_ctx[0].srv)),
-		BT_MESH_MODEL_NONE),
+    BT_MESH_ELEM(
+        1,
+        BT_MESH_MODEL_LIST(
+            BT_MESH_MODEL_CFG_SRV,
+            BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
+            BT_MESH_MODEL_ONOFF_SRV(&led_ctx[0].srv)),
+		BT_MESH_MODEL_LIST(
+			BT_MESH_MODEL_VND(SWITCH_COLOR_COMPANY_ID, 0x0001, switch_color_ops, NULL, NULL),
+		)),
 #endif
 #if DT_NODE_EXISTS(DT_ALIAS(led1))
-	BT_MESH_ELEM(
-		2, BT_MESH_MODEL_LIST(BT_MESH_MODEL_ONOFF_SRV(&led_ctx[1].srv)),
-		BT_MESH_MODEL_NONE),
+    BT_MESH_ELEM(
+        2, BT_MESH_MODEL_LIST(BT_MESH_MODEL_ONOFF_SRV(&led_ctx[1].srv)),
+        BT_MESH_MODEL_NONE),
 #endif
 #if DT_NODE_EXISTS(DT_ALIAS(led2))
-	BT_MESH_ELEM(
-		3, BT_MESH_MODEL_LIST(BT_MESH_MODEL_ONOFF_SRV(&led_ctx[2].srv)),
-		BT_MESH_MODEL_NONE),
+    BT_MESH_ELEM(
+        3, BT_MESH_MODEL_LIST(BT_MESH_MODEL_ONOFF_SRV(&led_ctx[2].srv)),
+        BT_MESH_MODEL_NONE),
 #endif
 #if DT_NODE_EXISTS(DT_ALIAS(led3))
-	BT_MESH_ELEM(
-		4, BT_MESH_MODEL_LIST(BT_MESH_MODEL_ONOFF_SRV(&led_ctx[3].srv)),
-		BT_MESH_MODEL_NONE),
+    BT_MESH_ELEM(
+        4, BT_MESH_MODEL_LIST(BT_MESH_MODEL_ONOFF_SRV(&led_ctx[3].srv)),
+        BT_MESH_MODEL_NONE),
 #endif
 };
 
-static const struct bt_mesh_comp comp = {
+
+// // 配列定義のみ（中身はあとで代入）
+// static const struct bt_mesh_model sig_models[] = {
+//     BT_MESH_MODEL_CFG_SRV,
+//     BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
+//     BT_MESH_MODEL_ONOFF_SRV(&led_ctx[0].srv),
+// };
+// static const struct bt_mesh_model vnd_models[1];
+
+// static struct bt_mesh_comp comp = {
+//     .cid = CONFIG_BT_COMPANY_ID,
+//     .elem = elements,
+//     .elem_count = ARRAY_SIZE(elements),
+// };
+
+/* --- モデル群定義 --- */
+static const struct bt_mesh_model sig_models[] = {
+	BT_MESH_MODEL_CFG_SRV,
+	BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
+	BT_MESH_MODEL_ONOFF_SRV(&led_ctx[0].srv),
+};
+
+static struct bt_mesh_model vnd_models[1];
+
+/* --- Composition定義 --- */
+static struct bt_mesh_comp comp = {
 	.cid = CONFIG_BT_COMPANY_ID,
 	.elem = elements,
 	.elem_count = ARRAY_SIZE(elements),
 };
+
 
 const struct bt_mesh_comp *model_handler_init(void)
 {
 	k_work_init_delayable(&attention_blink_work, attention_blink);
 
 	// LED初期化
-
 	for (int i = 0; i < ARRAY_SIZE(leds); i++) {
 		if (!device_is_ready(leds[i].dev)) {
 			printk("Error: %s LED device not ready.\n", leds[i].name);
-			return -ENODEV;
+			return NULL;
 		}
 
 		int ret = gpio_pin_configure(leds[i].dev, leds[i].pin, GPIO_OUTPUT_INACTIVE);
 		if (ret < 0) {
 			printk("Error: Failed to configure %s LED (err %d)\n", leds[i].name, ret);
-			return ret;
+			return NULL;
 		}
 	}
+
+	// Initialize the vendor model properly
+	memcpy(&vnd_models[0], &switch_color_model[0], sizeof(struct bt_mesh_model));
 
 	return &comp;
 }

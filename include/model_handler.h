@@ -20,6 +20,15 @@ extern "C" {
 
 const struct bt_mesh_comp *model_handler_init(void);
 
+// 外付けLEDの構造体
+struct led_info {
+	const struct device *dev;
+	uint8_t pin;
+	const char *name;
+};
+
+extern struct led_info leds[];
+
 #ifdef __cplusplus
 }
 #endif
