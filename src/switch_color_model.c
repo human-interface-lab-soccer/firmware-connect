@@ -30,7 +30,7 @@ int switch_color_msg_handler(const struct bt_mesh_model *model,
     color_num3 = atoi(buf3);
 
     // 自ノードのアドレス取得
-    uint16_t addr = ctx->addr;  // 受信元のユニキャストアドレスを利用
+    uint16_t addr = bt_mesh_model_elem(model)->addr;  // ローカルノードのユニキャストアドレスを利用
 
     // アドレスに基づく相対位置
     int soft_node_address   = (int)addr - UNICAST_ADDRESS_START;
