@@ -10,7 +10,6 @@
 #include "model_handler.h"
 #include <zephyr/drivers/gpio.h>
 #include "switch_color_model.h"  
-#include "model_handler.h"
 
 // 外付けLEDのピンを定義
 #define RED_LED_NODE DT_NODELABEL(gpio0)
