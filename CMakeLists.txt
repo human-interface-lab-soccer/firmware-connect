@@ -15,7 +15,9 @@ include_directories(
 # NORDIC SDK APP START
 target_sources(app PRIVATE
 	src/main.c
-	src/model_handler.c)
+	src/model_handler.c
+	src/switch_color_model.c
+	)
 target_include_directories(app PRIVATE
 	include
 	${ZEPHYR_NRF_MODULE_DIR}/samples/bluetooth/mesh/common

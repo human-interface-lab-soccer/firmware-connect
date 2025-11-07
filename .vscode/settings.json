@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "memory": "c",
+        "functional": "c",
+        "mesh.h": "c"
+    }
+}
