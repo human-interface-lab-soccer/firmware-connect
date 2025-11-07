@@ -166,9 +166,10 @@ static struct bt_mesh_elem elements[] = {
         BT_MESH_MODEL_LIST(
             BT_MESH_MODEL_CFG_SRV,
             BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
-            BT_MESH_MODEL_ONOFF_SRV(&led_ctx[0].srv)),
+            // BT_MESH_MODEL_ONOFF_SRV(&led_ctx[0].srv)
+			),
 		BT_MESH_MODEL_LIST(
-			BT_MESH_MODEL_VND(SWITCH_COLOR_COMPANY_ID, 0x0001, switch_color_ops, NULL, NULL),
+			BT_MESH_MODEL_VND(SWITCH_COLOR_COMPANY_ID, SWITCH_COLOR_MODEL_ID, switch_color_ops, NULL, NULL),
 		)),
 #endif
 #if DT_NODE_EXISTS(DT_ALIAS(led1))
@@ -204,11 +205,11 @@ static struct bt_mesh_elem elements[] = {
 // };
 
 /* --- モデル群定義 --- */
-static const struct bt_mesh_model sig_models[] = {
-	BT_MESH_MODEL_CFG_SRV,
-	BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
-	BT_MESH_MODEL_ONOFF_SRV(&led_ctx[0].srv),
-};
+// static const struct bt_mesh_model sig_models[] = {
+// 	BT_MESH_MODEL_CFG_SRV,
+// 	BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
+// 	BT_MESH_MODEL_ONOFF_SRV(&led_ctx[0].srv),
+// };
 
 static struct bt_mesh_model vnd_models[1];
 
