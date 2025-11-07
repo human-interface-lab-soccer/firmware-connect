@@ -64,30 +64,64 @@ int switch_color_msg_handler(const struct bt_mesh_model *model,
     // 指定色に応じてLEDを制御
     switch (new_color_num) {
         case 0: // 消灯
-            gpio_pin_set(leds[0].dev, leds[0].pin, 0);
-            gpio_pin_set(leds[1].dev, leds[1].pin, 0);
-            gpio_pin_set(leds[2].dev, leds[2].pin, 0);
+            for (int i = 0; i < 3; ++i) {
+                if (leds[i].dev == NULL || !device_is_ready(leds[i].dev)) {
+                    printk("LED device %d not ready or NULL\n", i);
+                    continue;
+                }
+                gpio_pin_set(leds[i].dev, leds[i].pin, 0);
+            }
             printk("LED OFF\n");
             break;
 
         case 1: // 赤
-            gpio_pin_set(leds[0].dev, leds[0].pin, 1);
-            gpio_pin_set(leds[1].dev, leds[1].pin, 0);
-            gpio_pin_set(leds[2].dev, leds[2].pin, 0);
+            if (leds[0].dev == NULL || !device_is_ready(leds[0].dev)) {
+                printk("LED device 0 not ready or NULL\n");
+            } else {
+                gpio_pin_set(leds[0].dev, leds[0].pin, 1);
+            }
+            for (int i = 1; i < 3; ++i) {
+                if (leds[i].dev == NULL || !device_is_ready(leds[i].dev)) {
+                    printk("LED device %d not ready or NULL\n", i);
+                    continue;
+                }
+                gpio_pin_set(leds[i].dev, leds[i].pin, 0);
+            }
             printk("LED RED\n");
             break;
 
         case 2: // 緑
-            gpio_pin_set(leds[0].dev, leds[0].pin, 0);
-            gpio_pin_set(leds[1].dev, leds[1].pin, 1);
-            gpio_pin_set(leds[2].dev, leds[2].pin, 0);
+            if (leds[1].dev == NULL || !device_is_ready(leds[1].dev)) {
+                printk("LED device 1 not ready or NULL\n");
+            } else {
+                gpio_pin_set(leds[1].dev, leds[1].pin, 1);
+            }
+            if (leds[0].dev == NULL || !device_is_ready(leds[0].dev)) {
+                printk("LED device 0 not ready or NULL\n");
+            } else {
+                gpio_pin_set(leds[0].dev, leds[0].pin, 0);
+            }
+            if (leds[2].dev == NULL || !device_is_ready(leds[2].dev)) {
+                printk("LED device 2 not ready or NULL\n");
+            } else {
+                gpio_pin_set(leds[2].dev, leds[2].pin, 0);
+            }
             printk("LED GREEN\n");
             break;
 
         case 3: // 青
-            gpio_pin_set(leds[0].dev, leds[0].pin, 0);
-            gpio_pin_set(leds[1].dev, leds[1].pin, 0);
-            gpio_pin_set(leds[2].dev, leds[2].pin, 1);
+            if (leds[2].dev == NULL || !device_is_ready(leds[2].dev)) {
+                printk("LED device 2 not ready or NULL\n");
+            } else {
+                gpio_pin_set(leds[2].dev, leds[2].pin, 1);
+            }
+            for (int i = 0; i < 2; ++i) {
+                if (leds[i].dev == NULL || !device_is_ready(leds[i].dev)) {
+                    printk("LED device %d not ready or NULL\n", i);
+                    continue;
+                }
+                gpio_pin_set(leds[i].dev, leds[i].pin, 0);
+            }
             printk("LED BLUE\n");
             break;
 
