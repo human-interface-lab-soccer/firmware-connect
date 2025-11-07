@@ -12,6 +12,10 @@ int switch_color_msg_handler(const struct bt_mesh_model *model,
                               struct bt_mesh_msg_ctx *ctx,
                               struct net_buf_simple *buf)
 {
+    if (buf == NULL || buf->data == NULL) {
+        printk("Error: buf or buf->data is NULL in switch_color_msg_handler\n");
+        return -EINVAL;
+    }
     char msg[13] = {0};
     size_t len = MIN(buf->len, 12);
     memcpy(msg, buf->data, len);
