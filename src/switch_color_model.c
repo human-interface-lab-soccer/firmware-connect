@@ -2,149 +2,92 @@
 #include <zephyr/bluetooth/mesh.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/drivers/gpio.h>
-#include <math.h>
 #include "model_handler.h"
 
 #define UNICAST_ADDRESS_START 2
-#define BATCH_SIZE 4
+
+// Set LED pattern based on color number
+static void set_led_color(uint8_t color)
+{
+    // Default to OFF
+    int r = 0, g = 0, b = 0;
+
+    switch (color) {
+        case 1: r = 1; break; // Red
+        case 2: g = 1; break; // Green
+        case 3: b = 1; break; // Blue
+        case 4: r = 1; g = 1; break; // Yellow/Orange
+        case 5: r = 1; b = 1; break; // Magenta
+        case 6: g = 1; b = 1; break; // Cyan
+        case 7: r = 1; g = 1; b = 1; break; // White
+        case 0:
+        default:
+            break; // OFF
+    }
+
+    if (ext_leds[0].port) gpio_pin_set_dt(&ext_leds[0], r);
+    if (ext_leds[1].port) gpio_pin_set_dt(&ext_leds[1], g);
+    if (ext_leds[2].port) gpio_pin_set_dt(&ext_leds[2], b);
+    
+    printk("LED Color Set to: %d\n", color);
+}
 
 int switch_color_msg_handler(const struct bt_mesh_model *model,
                               struct bt_mesh_msg_ctx *ctx,
                               struct net_buf_simple *buf)
 {
-    if (buf == NULL || buf->data == NULL) {
-        printk("Error: buf or buf->data is NULL in switch_color_msg_handler\n");
+    // Payload length check
+    if (buf->len < sizeof(struct switch_color_set_msg)) {
+        printk("Error: Invalid payload length %d\n", buf->len);
         return -EINVAL;
     }
-    char msg[13] = {0};
-    size_t len = MIN(buf->len, 12);
-    memcpy(msg, buf->data, len);
 
-    // 4桁ごとに分割
-    int color_num = 0;
-    int color_num2 = 0;
-    int color_num3 = 0;
+    // Cast the binary payload to our struct
+    struct switch_color_set_msg *msg = (struct switch_color_set_msg *)buf->data;
+    
+    // Retrieve node's unicast address
+    uint16_t addr = bt_mesh_model_elem(model)->addr;
+    int soft_node_address = (int)addr - UNICAST_ADDRESS_START;
 
-    char buf1[5] = {0}, buf2[5] = {0}, buf3[5] = {0};
-    memcpy(buf1, &msg[0],  4);
-    memcpy(buf2, &msg[4],  4);
-    memcpy(buf3, &msg[8],  4);
-    color_num  = atoi(buf1);
-    color_num2 = atoi(buf2);
-    color_num3 = atoi(buf3);
-
-    // 自ノードのアドレス取得
-    uint16_t addr = bt_mesh_model_elem(model)->addr;  // ローカルノードのユニキャストアドレスを利用
-
-    // アドレスに基づく相対位置
-    int soft_node_address   = (int)addr - UNICAST_ADDRESS_START;
-    int color_num_quotient  = soft_node_address / BATCH_SIZE;
-    int color_num_remainder = soft_node_address % BATCH_SIZE;
-
-    // 上位桁から割り当てるように、BATCH_SIZE - 1 - remainder で桁位置を反転
-    int target_digit = (BATCH_SIZE - 1) - color_num_remainder;
-
-    int new_color_num = 0;
-
-    switch (color_num_quotient) {
-        case 0:
-            new_color_num = (int)(color_num / pow(10, target_digit)) % 10;
-            break;
-        case 1:
-            new_color_num = (int)(color_num2 / pow(10, target_digit)) % 10;
-            break;
-        case 2:
-            new_color_num = (int)(color_num3 / pow(10, target_digit)) % 10;
-            break;
-        default:
-            new_color_num = 0;
-            break;
+    uint8_t target_color = 0;
+    
+    // Validate bounds for node address and extract this node's color from array
+    if (soft_node_address >= 0 && soft_node_address < MAX_NODES) {
+        target_color = msg->colors[soft_node_address];
+    } else {
+        printk("Warning: Node address %d out of bounds for color array\n", soft_node_address);
     }
 
-    printk("Node %d → color_num=%d, color_num2=%d, color_num3=%d\n", addr, color_num, color_num2, color_num3);
-    printk(" → quotient=%d remainder=%d digit=%d → command=%d\n",
-           color_num_quotient, color_num_remainder, target_digit, new_color_num);
+    printk("Node %d (soft: %d) → target_color=%d\n", addr, soft_node_address, target_color);
 
-    // 指定色に応じてLEDを制御
-    switch (new_color_num) {
-        case 0: // 消灯
-            for (int i = 0; i < 3; ++i) {
-                if (leds[i].dev == NULL || !device_is_ready(leds[i].dev)) {
-                    printk("LED device %d not ready or NULL\n", i);
-                    continue;
-                }
-                gpio_pin_set(leds[i].dev, leds[i].pin, 0);
-            }
-            printk("LED OFF\n");
-            break;
+    // Apply color to hardware LEDs
+    set_led_color(target_color);
 
-        case 1: // 赤
-            if (leds[0].dev == NULL || !device_is_ready(leds[0].dev)) {
-                printk("LED device 0 not ready or NULL\n");
-            } else {
-                gpio_pin_set(leds[0].dev, leds[0].pin, 1);
-            }
-            for (int i = 1; i < 3; ++i) {
-                if (leds[i].dev == NULL || !device_is_ready(leds[i].dev)) {
-                    printk("LED device %d not ready or NULL\n", i);
-                    continue;
-                }
-                gpio_pin_set(leds[i].dev, leds[i].pin, 0);
-            }
-            printk("LED RED\n");
-            break;
+    // Send Status Response if it is an acknowledged message (SET)
+    if (ctx->recv_op == OP_SWITCH_COLOR_SET) {
+        BT_MESH_MODEL_BUF_DEFINE(rsp, OP_SWITCH_COLOR_STATUS, sizeof(struct switch_color_status_msg));
+        bt_mesh_model_msg_init(&rsp, OP_SWITCH_COLOR_STATUS);
 
-        case 2: // 緑
-            if (leds[1].dev == NULL || !device_is_ready(leds[1].dev)) {
-                printk("LED device 1 not ready or NULL\n");
-            } else {
-                gpio_pin_set(leds[1].dev, leds[1].pin, 1);
-            }
-            if (leds[0].dev == NULL || !device_is_ready(leds[0].dev)) {
-                printk("LED device 0 not ready or NULL\n");
-            } else {
-                gpio_pin_set(leds[0].dev, leds[0].pin, 0);
-            }
-            if (leds[2].dev == NULL || !device_is_ready(leds[2].dev)) {
-                printk("LED device 2 not ready or NULL\n");
-            } else {
-                gpio_pin_set(leds[2].dev, leds[2].pin, 0);
-            }
-            printk("LED GREEN\n");
-            break;
+        struct switch_color_status_msg status;
+        status.status = target_color; // Return current state
+        net_buf_simple_add_mem(&rsp, &status, sizeof(status));
 
-        case 3: // 青
-            if (leds[2].dev == NULL || !device_is_ready(leds[2].dev)) {
-                printk("LED device 2 not ready or NULL\n");
-            } else {
-                gpio_pin_set(leds[2].dev, leds[2].pin, 1);
-            }
-            for (int i = 0; i < 2; ++i) {
-                if (leds[i].dev == NULL || !device_is_ready(leds[i].dev)) {
-                    printk("LED device %d not ready or NULL\n", i);
-                    continue;
-                }
-                gpio_pin_set(leds[i].dev, leds[i].pin, 0);
-            }
-            printk("LED BLUE\n");
-            break;
-
-        default:
-            printk("Unknown color: %d\n", new_color_num);
-            break;
+        if (bt_mesh_model_send(model, ctx, &rsp, NULL, NULL)) {
+            printk("Error sending status response\n");
+        }
     }
 
     return 0;
 }
 
-
-// Vendor Modelのオペレーション定義
+// Vendor Model Operations
 const struct bt_mesh_model_op switch_color_ops[] = {
-    { BT_MESH_MODEL_OP_3(0x01, SWITCH_COLOR_COMPANY_ID), 0, switch_color_msg_handler },
+    { OP_SWITCH_COLOR_SET, BT_MESH_LEN_EXACT(sizeof(struct switch_color_set_msg)), switch_color_msg_handler },
+    { OP_SWITCH_COLOR_SET_UNACK, BT_MESH_LEN_EXACT(sizeof(struct switch_color_set_msg)), switch_color_msg_handler },
     BT_MESH_MODEL_OP_END,
 };
 
-// Vendor Model定義
+// Vendor Model Definition
 struct bt_mesh_model switch_color_model[] = {
     BT_MESH_MODEL_VND(SWITCH_COLOR_COMPANY_ID, SWITCH_COLOR_MODEL_ID, switch_color_ops, NULL, NULL),
 };

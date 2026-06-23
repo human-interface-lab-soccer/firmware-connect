@@ -1,0 +1,23 @@
+/ {
+	aliases {
+		ext-led0 = &led_red;
+		ext-led1 = &led_green;
+		ext-led2 = &led_blue;
+	};
+
+	gpio_leds {
+		compatible = "gpio-leds";
+		led_red: led_red {
+			gpios = <&gpio0 1 GPIO_ACTIVE_LOW>;
+			label = "External Red LED";
+		};
+		led_green: led_green {
+			gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
+			label = "External Green LED";
+		};
+		led_blue: led_blue {
+			gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
+			label = "External Blue LED";
+		};
+	};
+};

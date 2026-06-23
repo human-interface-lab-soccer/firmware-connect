@@ -13,6 +13,7 @@
 #define MODEL_HANDLER_H__
 
 #include <zephyr/bluetooth/mesh.h>
+#include <zephyr/drivers/gpio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,14 +21,7 @@ extern "C" {
 
 const struct bt_mesh_comp *model_handler_init(void);
 
-// 外付けLEDの構造体
-struct led_info {
-	const struct device *dev;
-	uint8_t pin;
-	const char *name;
-};
-
-extern struct led_info leds[];
+extern const struct gpio_dt_spec ext_leds[3];
 
 #ifdef __cplusplus
 }
