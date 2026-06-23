@@ -25,11 +25,39 @@ static void set_led_color(uint8_t color)
             break; // OFF
     }
 
-    if (ext_leds[0].port) gpio_pin_set_dt(&ext_leds[0], r);
-    if (ext_leds[1].port) gpio_pin_set_dt(&ext_leds[1], g);
-    if (ext_leds[2].port) gpio_pin_set_dt(&ext_leds[2], b);
+    int err;
+
+    // Red LED
+    if (ext_leds[0].port != NULL) {
+        err = gpio_pin_set_dt(&ext_leds[0], r);
+        if (err < 0) {
+            printk("Error: Failed to set Red LED (err %d)\n", err);
+        }
+    } else {
+        printk("Error: Red LED (ext_leds[0]) port is NULL. DeviceTree binding missing?\n");
+    }
+
+    // Green LED
+    if (ext_leds[1].port != NULL) {
+        err = gpio_pin_set_dt(&ext_leds[1], g);
+        if (err < 0) {
+            printk("Error: Failed to set Green LED (err %d)\n", err);
+        }
+    } else {
+        printk("Error: Green LED (ext_leds[1]) port is NULL. DeviceTree binding missing?\n");
+    }
+
+    // Blue LED
+    if (ext_leds[2].port != NULL) {
+        err = gpio_pin_set_dt(&ext_leds[2], b);
+        if (err < 0) {
+            printk("Error: Failed to set Blue LED (err %d)\n", err);
+        }
+    } else {
+        printk("Error: Blue LED (ext_leds[2]) port is NULL. DeviceTree binding missing?\n");
+    }
     
-    printk("LED Color Set to: %d\n", color);
+    printk("LED Color Set to: %d (R:%d G:%d B:%d)\n", color, r, g, b);
 }
 
 static int handle_color_set(const struct bt_mesh_model *model,
@@ -43,12 +71,23 @@ static int handle_color_set(const struct bt_mesh_model *model,
         return -EINVAL;
     }
 
+    // ★★★ここから追加★★★
+    printk("=== 受信データ (長さ: %d bytes) ===\n", buf->len);
+    for (int i = 0; i < buf->len; i++) {
+        printk("%02X ", buf->data[i]);
+    }
+    printk("\n==================================\n");
+    // ★★★ここまで追加★★★
+
     // Cast the binary payload to our struct
     struct switch_color_set_msg *msg = (struct switch_color_set_msg *)buf->data;
     
     // Retrieve node's unicast address
     uint16_t addr = bt_mesh_primary_addr();
-    int soft_node_address = (int)addr - 2; // UNICAST_ADDRESS_START
+    // int soft_node_address = (int)addr - 2; // UNICAST_ADDRESS_START
+
+    // テストのため、強制的に「自分は配列の0番目（ノード0）だ」と認識させる
+    int soft_node_address = 0;
 
     uint8_t target_color = 0;
     if (soft_node_address >= 0 && soft_node_address < MAX_NODES) {

@@ -142,9 +142,10 @@ const struct bt_mesh_comp *model_handler_init(void)
 {
 	k_work_init_delayable(&attention_blink_work, attention_blink);
 
+	printk("--- Custom LED GPIO Initialization Start ---\n");
 	// Configure LEDs via DeviceTree
 	for (int i = 0; i < ARRAY_SIZE(ext_leds); i++) {
-		if (ext_leds[i].port) {
+		if (ext_leds[i].port != NULL) {
 			if (!gpio_is_ready_dt(&ext_leds[i])) {
 				printk("Error: LED %d device not ready.\n", i);
 				return NULL;
@@ -154,8 +155,12 @@ const struct bt_mesh_comp *model_handler_init(void)
 				printk("Error: Failed to configure LED %d (err %d)\n", i, ret);
 				return NULL;
 			}
-		}
+			printk("Success: LED %d (pin %d) configured as OUTPUT_INACTIVE.\n", i, ext_leds[i].pin);
+		} else {
+            printk("Warning: LED %d port is NULL. Skipping configuration.\n", i);
+        }
 	}
+	printk("--- Custom LED GPIO Initialization End ---\n");
 
 	return &comp;
 }

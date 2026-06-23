@@ -3,5 +3,6 @@
         "memory": "c",
         "functional": "c",
         "mesh.h": "c"
-    }
+    },
+    "nrf-connect.applications": []
 }
