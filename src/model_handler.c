@@ -59,11 +59,9 @@ static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 
 	led->value = set->on_off;
     
-    // Using simple Generic OnOff to control the first LED as a fallback/standard test
-    if (ext_leds[0].port) {
-        gpio_pin_set_dt(&ext_leds[0], set->on_off);
-        printk("Generic OnOff -> LED %d\n", set->on_off);
-    }
+    // 開発キット（DK）本体に備え付けられているLED0を制御する
+    dk_set_led(0, set->on_off);
+    printk("Generic OnOff -> DK LED0 %d\n", set->on_off);
 
 respond:
 	if (rsp) {
