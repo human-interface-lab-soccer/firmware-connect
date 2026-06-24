@@ -1,248 +1,76 @@
-.. _bluetooth_mesh_light:
+Bluetooth Mesh カスタムLED制御ファームウェア (nRF54)
+####################################################
 
-Bluetooth Mesh: Light
-#####################
+本ファームウェアは、nRF54L15 DKなどの開発キット上で動作するBluetooth Meshのカスタムノード実装です。
+外部接続されたフルカラーLED（Red, Green, Blue）を、独自のVendor Modelを通じて制御します。旧システム（nRF52時代の文字列ペイロードやハードコード実装）からZephyr標準のアーキテクチャへと刷新されています。
 
-.. contents::
-   :local:
-   :depth: 2
-
-The Bluetooth® Mesh light sample demonstrates how to set up a mesh server model application, and control LEDs with Bluetooth Mesh using the :ref:`bt_mesh_onoff_readme`.
-
-.. note::
-   This sample is self-contained, and can be tested on its own.
-   However, it is required when testing the :ref:`bluetooth_mesh_light_switch` sample.
-
-This sample also provides support for point-to-point Device Firmware Update (DFU) over the Simple Management Protocol (SMP).
-
-Requirements
-************
-
-The sample supports the following development kits:
-
-.. table-from-sample-yaml::
-
-The sample also requires a smartphone with Nordic Semiconductor's nRF Mesh mobile app installed in one of the following versions:
-
-  * `nRF Mesh mobile app for Android`_
-  * `nRF Mesh mobile app for iOS`_
-
-.. note::
-   |thingy53_sample_note|
-
-.. include:: /includes/tfm.txt
-
-DFU requirements
+ハードウェア構成
 ================
 
-The configuration overlay file :file:`overlay-dfu.conf` and the :ref:`sysbuild <configuration_system_overview_sysbuild>` configuration file :file:`sysbuild-dfu.conf` enable DFU support in the application, and apply to the following platforms:
+外部LEDは以下のピンに接続されており、すべて **Active Low（VDDIO共通）** で駆動する設計となっています。
+ピンのアサインと電気的極性はC言語に直書きせず、DeviceTree (``app.overlay``) で完全に定義・分離されています。
 
-* nrf52840dk/nrf52840
-* nrf21540dk/nrf52840
-* nrf54l15dk/nrf54l15/cpuapp
-* nrf5340dk/nrf5340/cpuapp
-* nrf5340dk/nrf5340/cpuapp/ns
+* **Red LED**: P0.01 (``&gpio0 1``)
+* **Green LED**: P0.02 (``&gpio0 2``)
+* **Blue LED**: P0.03 (``&gpio0 3``)
 
-While this overlay configuration is only applicable for the mentioned platforms in this sample, DFU over Bluetooth Low Energy may be used on other platforms as well.
+ソフトウェアアーキテクチャ
+==========================
 
-Take the flash size into consideration when using DFU over Bluetooth LE on other platforms.
-For example, both nRF52832 and nRF52833 have limited flash size.
+本ノードは単一のエレメント（Element 0）のみで構成され、不要なダミーエレメントを持たないスッキリとした構成になっています。以下のモデルが同居しています。
 
-.. note::
-   Point-to-point DFU over Bluetooth Low Energy for :zephyr:board:`thingy53` is supported by default.
-   See :ref:`thingy53_app_update` for more information about updating firmware image on :zephyr:board:`thingy53`.
+1. **Configuration Server**: 必須モデル（ネットワーク設定用）
+2. **Health Server**: 必須モデル（死活監視・プロビジョニング時のAttention用）
+3. **Generic OnOff Server**: 標準モデル（フォールバックとして、とりあえずRed LEDをON/OFF制御）
+4. **Vendor Model**: 複数ノードのLED色を一括制御するためのカスタムモデル
 
-The DFU feature also requires a smartphone with Nordic Semiconductor's nRF Device Manager mobile app installed in one of the following versions:
+Vendor Model 詳細仕様
+---------------------
 
-* `nRF Device Manager mobile app for Android`_
-* `nRF Device Manager mobile app for iOS`_
+本システムの中核となるカラー制御は、以下のVendor Modelによって処理されます。
 
-Overview
-********
+* **Company ID**: ``0x0059`` (Nordic SemiconductorのIDを開発用に借用)
+* **Model ID**: ``0x0001``
 
-The mesh light sample is a Generic OnOff Server with a provisionee role in a mesh network.
-There can be one or more servers in the network, for example light bulbs.
+オペコード
+~~~~~~~~~~
 
-The sample instantiates up to four instances of the Generic OnOff Server model for controlling LEDs.
-The number of OnOff Server instances depends on available LEDs, as defined in board DTS file.
+送受信には以下の3つのオペコード（命令）が用意されています。
 
-Provisioning is performed using the `nRF Mesh mobile app`_.
-This mobile application is also used to configure key bindings, and publication and subscription settings of the Bluetooth Mesh model instances in the sample.
-After provisioning and configuring the mesh models supported by the sample in the `nRF Mesh mobile app`_, you can control the LEDs on the development kit from the app.
+* ``0x01``: **色設定 (ACK要求あり)** - 設定処理完了後、自動的にStatus応答を返します。
+* ``0x02``: **色設定 (ACK要求なし)** - 応答を待たずに高速で一斉ブロードキャストする場合などに使用します。
+* ``0x03``: **Status応答** - 現在設定されている色状態を送信元アプリやデバイスに返します。
 
-Provisioning
+ペイロード構造 (バイナリ通信)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+通信帯域の狭いBluetooth Meshに最適化するため、ペイロードは文字列ではなく**最大12ノード分の色データを格納できる12バイトのバイナリ配列** (``uint8_t colors[12]``) になっています。
+これにより、1回のパケット送信でネットワーク上の最大12台のデバイスの色を同時に、かつ個別に指定することが可能です。
+
+各デバイス（ノード）は、自身の「Meshネットワーク上のユニキャストアドレス」からベースアドレス (``2``) を引いた値をインデックスとし、配列の該当箇所から自分宛てのカラーコードを抽出します。
+
+**カラーコード定義:**
+
+* ``0``: 消灯 (OFF)
+* ``1``: 赤 (Red)
+* ``2``: 緑 (Green)
+* ``3``: 青 (Blue)
+* ``4``: 黄色 (Yellow/Orange)
+* ``5``: マゼンタ (Magenta)
+* ``6``: シアン (Cyan)
+* ``7``: 白 (White)
+
+エラーハンドリングと安全機構
+============================
+
+システムの安定性を高めるため、以下の安全機構が組み込まれています。
+
+* **DeviceTree検証**: システム起動時 (``model_handler_init``) に ``app.overlay`` の設定が正しく読み込まれているか検証し、GPIOの出力・方向設定 (``GPIO_OUTPUT_INACTIVE``) を確実に行います。失敗した場合や設定漏れがある場合はコンソールに警告を出力します。
+* **不正ペイロードの破棄**: 受信したペイロードの長さが構造体のサイズ（12バイト）に満たない場合は、無効なコマンドとして破棄します。
+* **アドレスの範囲外チェック**: 自身のアドレスから算出したインデックスが12以上の場合は、配列外参照 (Buffer Overrun) を防ぐために警告を出力し、処理を安全にスキップします。
+
+ビルドと実行
 ============
 
-The provisioning is handled by the :ref:`bt_mesh_dk_prov`.
-It supports four types of out-of-band (OOB) authentication methods, and uses the Hardware Information driver to generate a deterministic UUID to uniquely represent the device.
-
-Models
-======
-
-The following table shows the mesh light composition data for this sample:
-
-.. table::
-   :align: center
-
-   =================  =================  =================  =================
-   Element 1          Element 2          Element 3          Element 4
-   =================  =================  =================  =================
-   Config Server      Gen. OnOff Server  Gen. OnOff Server  Gen. OnOff Server
-   Health Server
-   Gen. OnOff Server
-   =================  =================  =================  =================
-
-.. note::
-   When used with :zephyr:board:`thingy53`, Element 4 is not available.
-   :zephyr:board:`thingy53` supports only one RGB LED, and treats each RGB LED channel as a separate LED.
-
-The models are used for the following purposes:
-
-* :ref:`bt_mesh_onoff_srv_readme` instances in elements 1 to N, where N is number of on board LEDs, each control LEDs 1 to N, respectively.
-* Config Server allows configurator devices to configure the node remotely.
-* Health Server provides ``attention`` callbacks that are used during provisioning to call your attention to the device.
-  These callbacks trigger blinking of the LEDs.
-
-The model handling is implemented in :file:`src/model_handler.c`, which uses the :ref:`dk_buttons_and_leds_readme` library to control each LED on the development kit according to the matching received messages of Generic OnOff Server.
-
-User interface
-**************
-
-Buttons:
-   Can be used to input the OOB authentication value during provisioning.
-   All buttons have the same functionality during this procedure.
-
-LEDs:
-   Show the OOB authentication value during provisioning if the "Push button" OOB method is used.
-   Show the OnOff state of the Generic OnOff Server of the corresponding element.
-
-Configuration
-*************
-
-|config|
-
-|nrf5340_mesh_sample_note|
-
-Source file setup
-=================
-
-This sample is split into the following source files:
-
-* :file:`main.c` used to handle initialization.
-* :file:`model_handler.c` used to handle mesh models.
-
-DFU configuration
-=================
-
-.. tabs::
-
-   .. tab:: nRF52840 DK and nRF54L15 DK
-
-      To enable the DFU feature for the nRF52840 and nRF54L15 development kits, set :makevar:`SB_CONF_FILE` to :file:`sysbuild-dfu.conf` and :makevar:`EXTRA_CONF_FILE` to :file:`overlay-dfu.conf` when building the sample.
-      For example, when building from the command line, use the following command, where *board_target* is the target for the development kit for which you are building:
-
-      .. parsed-literal::
-         :class: highlight
-
-         west build -b *board_target* -p -- -DSB_CONF_FILE="sysbuild-dfu.conf" -DEXTRA_CONF_FILE="overlay-dfu.conf"
-
-      The configuration overlay file :file:`overlay-dfu.conf` and the sysbuild configuration file :file:`sysbuild-dfu.conf` enable the DFU feature.
-      To review the required configuration alterations, open and inspect the two files.
-
-   .. tab:: nRF5340 DK
-
-      To enable the DFU feature for the nRF5340 development kit, set :makevar:`SB_CONF_FILE` to :file:`sysbuild-dfu.conf` and :makevar:`EXTRA_CONF_FILE` to :file:`overlay-dfu.conf` when building the sample.
-      Additionally, you need to set the :makevar:`EXTRA_CONF_FILE` for the ipc_radio network image to :file:`overlay-dfu.conf` as well.
-      This is an additional network image specific configuration overlay file, which allocates the necessary resources to enable the DFU feature.
-      For example, when building from the command line, use the following command, where *board_target* is the target for the development kit for which you are building:
-
-      .. parsed-literal::
-         :class: highlight
-
-         west build -b *board_target* -p -- -DSB_CONF_FILE="sysbuild-dfu.conf" -DEXTRA_CONF_FILE="overlay-dfu.conf" -Dipc_radio_EXTRA_CONF_FILE="overlay-dfu.conf"
-
-      .. note::
-         Currently, the nRF5340 development kit only supports DFU for the application core.
-         This implies that all application DFU images must be compatible with the network core image running on the device.
-
-For more information about configuration files in the |NCS|, see :ref:`app_build_system`.
-
-FEM support
-===========
-
-.. include:: /includes/sample_fem_support.txt
-
-Building and running
-********************
-
-.. |sample path| replace:: :file:`samples/bluetooth/mesh/light`
-
-.. include:: /includes/build_and_run_ns.txt
-
-.. |sample_or_app| replace:: sample
-.. |ipc_radio_dir| replace:: :file:`sysbuild/ipc_radio`
-
-.. include:: /includes/ipc_radio_conf.txt
-
-.. _bluetooth_mesh_light_testing:
-
-Testing
-=======
-
-After programming the sample to your development kit, you can test it by using a smartphone with `nRF Mesh mobile app`_ installed.
-Testing consists of provisioning the device and configuring it for communication with the mesh models.
-
-Provisioning the device
------------------------
-
-.. |device name| replace:: :guilabel:`Mesh Light`
-
-.. include:: /includes/mesh_device_provisioning.txt
-
-Configuring models
-------------------
-
-See :ref:`ug_bt_mesh_model_config_app` for details on how to configure the mesh models with the nRF Mesh mobile app.
-
-Configure the Generic OnOff Server model on each element on the **Mesh Light** node:
-
-* Bind the model to **Application Key 1**.
-
-  Once the model is bound to the application key, you can control the first LED on the device.
-* In the model view, tap :guilabel:`ON` (one of the Generic On Off Controls) to light up the first LED on the development kit.
-
-Make sure to complete the configuration on each of the elements on the node to enable controlling each of the remaining three LEDs.
-
-Running DFU
-===========
-
-After the sample is built with the :file:`overlay-dfu.conf` file and the :file:`sysbuild-dfu.conf` file, and programmed to your development kit, support for FOTA update is enabled.
-See :ref:`FOTA over Bluetooth Low Energy<ug_nrf52_developing_ble_fota>` for instructions on how to perform FOTA update and initiate the DFU process.
-
-Dependencies
-************
-
-This sample uses the following |NCS| libraries:
-
-* :ref:`bt_mesh_onoff_srv_readme`
-* :ref:`bt_mesh_dk_prov`
-* :ref:`dk_buttons_and_leds_readme`
-
-In addition, it uses the following Zephyr libraries:
-
-* :file:`include/drivers/hwinfo.h`
-* :ref:`zephyr:kernel_api`:
-
-  * :file:`include/kernel.h`
-
-* :ref:`zephyr:bluetooth_api`:
-
-  * :file:`include/bluetooth/bluetooth.h`
-
-* :ref:`zephyr:bluetooth_mesh`:
-
-  * :file:`include/bluetooth/mesh.h`
-
-The sample also uses the following secure firmware component:
-
-* :ref:`Trusted Firmware-M <ug_tfm>`
+nRF Connect SDK (Zephyr) 環境でビルドを行います。
+DeviceTreeのオーバーレイ (``app.overlay``) が確実に適用されるよう、ビルド時はボード名を正確に指定し、必要に応じてクリーンビルド（Pristine Build）を行ってください。
